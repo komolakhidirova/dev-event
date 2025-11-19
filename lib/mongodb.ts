@@ -1,78 +1,65 @@
-import mongoose, { Mongoose } from "mongoose";
+import mongoose from 'mongoose'
 
-/**
- * MongoDB connection URI.
- *
- * Expected to be provided via the MONGODB_URI environment variable.
- * This should include credentials and the default database name, e.g.:
- *   mongodb+srv://user:password@cluster.mongodb.net/my-database
- */
-const MONGODB_URI = process.env.MONGODB_URI;
-
-if (!MONGODB_URI) {
-  throw new Error(
-    "Please define the MONGODB_URI environment variable inside your environment (e.g. .env.local).",
-  );
+// Define the connection cache type
+type MongooseCache = {
+	conn: typeof mongoose | null
+	promise: Promise<typeof mongoose> | null
 }
 
-/**
- * Cached connection object stored on the Node.js global scope.
- *
- * In development, Next.js reloads modules on every request. Without a cache,
- * this would create a new MongoDB connection on each reload, quickly
- * exhausting available connections. By storing the connection globally, we
- * ensure that the same connection is reused across reloads.
- */
-interface MongooseCache {
-  conn: Mongoose | null;
-  promise: Promise<Mongoose> | null;
-}
-
-// Augment the Node.js global type to include our cached Mongoose connection.
+// Extend the global object to include our mongoose cache
 declare global {
-  // eslint-disable-next-line no-var, vars-on-top
-  var mongoose: MongooseCache | undefined;
+	// eslint-disable-next-line no-var
+	var mongoose: MongooseCache | undefined
 }
 
-// Use the existing cached connection if it exists, otherwise create a new cache container.
-const cached: MongooseCache = global.mongoose ?? { conn: null, promise: null };
+const MONGODB_URI = process.env.MONGODB_URI
+
+// Initialize the cache on the global object to persist across hot reloads in development
+let cached: MongooseCache = global.mongoose || { conn: null, promise: null }
 
 if (!global.mongoose) {
-  global.mongoose = cached;
+	global.mongoose = cached
 }
 
 /**
- * Establishes (or retrieves) a cached Mongoose connection.
- *
- * This function is safe to call from both server components and API routes.
- * It ensures that only a single MongoDB connection is created per server
- * instance in production, and it reuses the same connection across hot
- * reloads in development.
+ * Establishes a connection to MongoDB using Mongoose.
+ * Caches the connection to prevent multiple connections during development hot reloads.
+ * @returns Promise resolving to the Mongoose instance
  */
-export async function connectToDatabase(): Promise<Mongoose> {
-  // If we already have an active connection, reuse it.
-  if (cached.conn) {
-    return cached.conn;
-  }
+async function connectDB(): Promise<typeof mongoose> {
+	// Return existing connection if available
+	if (cached.conn) {
+		return cached.conn
+	}
 
-  // If a connection is not already in progress, start a new one.
-  if (!cached.promise) {
-    cached.promise = mongoose.connect(MONGODB_URI, {
-      // Disable command buffering so errors surface immediately if the
-      // connection is not ready yet.
-      bufferCommands: false,
-    });
-  }
+	// Return existing connection promise if one is in progress
+	if (!cached.promise) {
+		// Validate MongoDB URI exists
+		if (!MONGODB_URI) {
+			throw new Error(
+				'Please define the MONGODB_URI environment variable inside .env.local'
+			)
+		}
+		const options = {
+			bufferCommands: false, // Disable Mongoose buffering
+		}
 
-  try {
-    cached.conn = await cached.promise;
-  } catch (error) {
-    // Reset the promise so that future calls can retry the connection.
-    cached.promise = null;
-    throw error;
-  }
+		// Create a new connection promise
+		cached.promise = mongoose.connect(MONGODB_URI!, options).then(mongoose => {
+			return mongoose
+		})
+	}
 
-  return cached.conn;
+	try {
+		// Wait for the connection to establish
+		cached.conn = await cached.promise
+	} catch (error) {
+		// Reset promise on error to allow retry
+		cached.promise = null
+		throw error
+	}
+
+	return cached.conn
 }
 
-export default connectToDatabase;
+export default connectDB
