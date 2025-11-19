@@ -101,6 +101,7 @@ const EventDetails = async ({ params }: { params: Promise<string> }) => {
 			</div>
 
 			<div className='details'>
+				{/*    Left Side - Event Content */}
 				<div className='content'>
 					<Image
 						src={image}
@@ -143,6 +144,7 @@ const EventDetails = async ({ params }: { params: Promise<string> }) => {
 					<EventTags tags={tags} />
 				</div>
 
+				{/*    Right Side - Booking Form */}
 				<aside className='booking'>
 					<div className='signup-card'>
 						<h2>Book Your Spot</h2>
